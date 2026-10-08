@@ -143,7 +143,7 @@ function Sidebar() {
       </ul>
 
       <div className="sign">
-        <p>Made with ❤️ by Akash shukla</p>
+        <p>Made with ❤️ by Akash Shukla</p>
       </div>
     </section>
   );
