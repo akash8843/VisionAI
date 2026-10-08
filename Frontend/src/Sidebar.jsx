@@ -1,7 +1,10 @@
 import "./Sidebar.css";
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useCallback } from "react";
 import { MyContext } from "./MyContext.jsx";
 import { v4 as uuidv4 } from "uuid";
+
+// Deployed backend URL
+const API_BASE_URL = "https://visionai-backend-61s4.onrender.com";
 
 function Sidebar() {
   const {
@@ -15,29 +18,35 @@ function Sidebar() {
     setPrevChats,
   } = useContext(MyContext);
 
-  const getAllThreads = async () => {
+  // Fetch all saved conversations
+  const getAllThreads = useCallback(async () => {
     try {
-      const response = await fetch("http://localhost:8080/api/thread");
+      const response = await fetch(
+        `${API_BASE_URL}/api/thread`
+      );
 
-      const res = await response.json();
+      if (!response.ok) {
+        throw new Error("Failed to fetch chat history");
+      }
 
-      const filteredData = res.map((thread) => ({
+      const data = await response.json();
+
+      const filteredData = data.map((thread) => ({
         threadId: thread.threadId,
         title: thread.title,
       }));
 
-      //console.log(filteredData);
-
       setAllThreads(filteredData);
-    } catch (err) {
-      console.log(err);
+    } catch (error) {
+      console.error("Chat history error:", error);
     }
-  };
+  }, [setAllThreads]);
 
   useEffect(() => {
     getAllThreads();
-  }, [currThreadId]);
+  }, [getAllThreads, currThreadId]);
 
+  // Create a new conversation
   const createNewChat = () => {
     setNewChats(true);
     setPrompt("");
@@ -46,46 +55,55 @@ function Sidebar() {
     setPrevChats([]);
   };
 
+  // Open an existing conversation
   const changeThread = async (newThreadId) => {
     setCurrThreadId(newThreadId);
     setNewChats(false);
     setPrompt("");
     setReply(null);
+    setPrevChats([]);
 
     try {
       const response = await fetch(
-        `http://localhost:8080/api/thread/${newThreadId}`,
+        `${API_BASE_URL}/api/thread/${newThreadId}`
       );
 
-      const res = await response.json();
-      console.log(res);
-      setPrevChats(res.messages);
+      if (!response.ok) {
+        throw new Error("Failed to load this conversation");
+      }
+
+      const data = await response.json();
+
+      setPrevChats(data.messages || []);
       setNewChats(false);
-      setReply(null);
-    } catch (err) {
-      console.log(err);
+    } catch (error) {
+      console.error("Open conversation error:", error);
     }
   };
 
-  const deletThread = async (threadId) => {
+  // Delete a conversation
+  const deleteThread = async (threadId) => {
     try {
       const response = await fetch(
-        `http://localhost:8080/api/thread/${threadId}`,
-        { method: "DELETE" },
-      );
-      const res = await response.json();
-      console.log(res);
-
-      //updated thread re-render
-      setAllThreads((prev) =>
-        prev.filter((thread) => thread.threadId !== threadId),
+        `${API_BASE_URL}/api/thread/${threadId}`,
+        { method: "DELETE" }
       );
 
-      if (threadId == currThreadId) {
+      if (!response.ok) {
+        throw new Error("Failed to delete conversation");
+      }
+
+      setAllThreads((previous) =>
+        previous.filter(
+          (thread) => thread.threadId !== threadId
+        )
+      );
+
+      if (threadId === currThreadId) {
         createNewChat();
       }
-    } catch (err) {
-      console.log(err);
+    } catch (error) {
+      console.error("Delete conversation error:", error);
     }
   };
 
@@ -93,26 +111,31 @@ function Sidebar() {
     <section className="sidebar">
       <button onClick={createNewChat}>
         <img
-          src="/Public/Neon_AI_Eye_Emblem.png"
-          alt="visionAI logo"
+          src="/Neon_AI_Eye_Emblem.png"
+          alt="VisionAI logo"
           className="logo"
         />
         <span className="fa-solid fa-pen-to-square"></span>
       </button>
 
       <ul className="history">
-        {allThreads?.map((thread, idx) => (
+        {allThreads?.map((thread) => (
           <li
-            key={idx}
+            key={thread.threadId}
             onClick={() => changeThread(thread.threadId)}
-            className={thread.threadId === currThreadId ? "highlighted" : ""}
+            className={
+              thread.threadId === currThreadId
+                ? "highlighted"
+                : ""
+            }
           >
-            {thread.title}
+            <span>{thread.title}</span>
+
             <i
               className="fa-solid fa-trash-can"
-              onClick={(e) => {
-                e.stopPropagation(); //stop event bubbling
-                deletThread(thread.threadId);
+              onClick={(event) => {
+                event.stopPropagation();
+                deleteThread(thread.threadId);
               }}
             ></i>
           </li>
