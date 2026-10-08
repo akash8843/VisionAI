@@ -8,13 +8,10 @@ import "highlight.js/styles/github-dark.css";
 
 function Chat() {
   const { newChats, prevChats, reply } = useContext(MyContext);
-
   const [latestReply, setLatestReply] = useState(null);
-
   const chatEndRef = useRef(null);
 
-  // Type Effect
-
+  // Type effect
   useEffect(() => {
     if (reply === null) {
       setLatestReply(null);
@@ -23,18 +20,16 @@ function Chat() {
 
     if (!reply) return;
 
-    const content = reply.split(" ");
-
+    const words = reply.split(" ");
     let idx = 0;
 
     setLatestReply("");
 
     const interval = setInterval(() => {
-      setLatestReply(content.slice(0, idx + 1).join(" "));
-
+      setLatestReply(words.slice(0, idx + 1).join(" "));
       idx++;
 
-      if (idx >= content.length) {
+      if (idx >= words.length) {
         clearInterval(interval);
       }
     }, 35);
@@ -42,61 +37,61 @@ function Chat() {
     return () => clearInterval(interval);
   }, [reply]);
 
-  // Auto Scroll
-
+  // Auto scroll
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
   }, [prevChats, latestReply]);
 
-  // Typing Check
-
+  // Typing check
   const isTyping =
     latestReply !== null &&
     prevChats?.length > 0 &&
     prevChats[prevChats.length - 1]?.role === "assistant";
 
-  // Render User Message
+  // Render user message, including an optional image
+  const renderUserMessage = (chat) => (
+    <div className="userMessageContainer">
+      {chat.image && (
+        <img
+          className="chatImage"
+          src={chat.image}
+          alt="Uploaded"
+        />
+      )}
 
-  const renderUserMessage = (chat) => {
-    return (
-      <div className="userMessageContainer">
-        {/* Image */}
-        {chat.image && (
-          <img className="chatImage" src={chat.image} alt="Uploaded" />
-        )}
-
-        {/* Text */}
-        {chat.content && <p className="userMessage">{chat.content}</p>}
-      </div>
-    );
-  };
+      {chat.content && (
+        <p className="userMessage">{chat.content}</p>
+      )}
+    </div>
+  );
 
   return (
     <div className="chat">
       {newChats && <h1>Start a New Chat!</h1>}
 
-      {/*Previous Chats*/}
-
-      {(isTyping ? prevChats.slice(0, -1) : prevChats)?.map((chat, idx) => (
-        <div className={chat.role === "user" ? "userDiv" : "gptDiv"} key={idx}>
-          {chat.role === "user" ? (
-            renderUserMessage(chat)
-          ) : (
-            <div className="gptMessage">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-              >
-                {chat.content}
-              </ReactMarkdown>
-            </div>
-          )}
-        </div>
-      ))}
-
-      {/* Latest Reply */}
+      {(isTyping ? prevChats.slice(0, -1) : prevChats)?.map(
+        (chat, idx) => (
+          <div
+            className={chat.role === "user" ? "userDiv" : "gptDiv"}
+            key={idx}
+          >
+            {chat.role === "user" ? (
+              renderUserMessage(chat)
+            ) : (
+              <div className="gptMessage">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeHighlight]}
+                >
+                  {chat.content || ""}
+                </ReactMarkdown>
+              </div>
+            )}
+          </div>
+        )
+      )}
 
       {isTyping && (
         <div className="gptDiv">
@@ -105,13 +100,13 @@ function Chat() {
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
             >
-              {latestReply}
+              {latestReply || ""}
             </ReactMarkdown>
           </div>
         </div>
       )}
 
-      <div ref={chatEndRef}></div>
+      <div ref={chatEndRef} />
     </div>
   );
 }

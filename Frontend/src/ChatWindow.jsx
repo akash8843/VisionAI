@@ -1,8 +1,13 @@
+
 import "./ChatWindow.css";
 import Chat from "./Chat.jsx";
 import { useContext, useState, useRef } from "react";
 import { MyContext } from "./MyContext.jsx";
 import { ScaleLoader } from "react-spinners";
+
+// Live Render backend URL
+const API_BASE_URL =
+  "https://visionai-backend-61s4.onrender.com/api";
 
 function ChatWindow() {
   const {
@@ -31,17 +36,14 @@ function ChatWindow() {
   const fileInputRef = useRef(null);
 
   // Create small image preview
-  // This preview will also be saved in MongoDB
-
+  // Thumbnail is also saved in MongoDB for chat history
   const createImageThumbnail = (file) => {
     return new Promise((resolve, reject) => {
       const objectUrl = URL.createObjectURL(file);
-
       const img = new Image();
 
       img.onload = () => {
         const canvas = document.createElement("canvas");
-
         const maxSize = 400;
 
         let width = img.width;
@@ -63,13 +65,11 @@ function ChatWindow() {
         canvas.height = height;
 
         const ctx = canvas.getContext("2d");
-
         ctx.drawImage(img, 0, 0, width, height);
 
         const thumbnail = canvas.toDataURL("image/jpeg", 0.7);
 
         URL.revokeObjectURL(objectUrl);
-
         resolve(thumbnail);
       };
 
@@ -82,16 +82,18 @@ function ChatWindow() {
     });
   };
 
+  // ==========================================
   // NORMAL CHAT
+  // ==========================================
 
   const getReply = async () => {
-    if (!prompt.trim()) {
+    if (!prompt.trim() || loading) {
       return;
     }
 
-    const currentPrompt = prompt;
+    const currentPrompt = prompt.trim();
 
-    // User message
+    // Show user message immediately
     setPrevChats((prev) => [
       ...prev,
       {
@@ -103,9 +105,10 @@ function ChatWindow() {
     setNewChats(false);
     setPrompt("");
     setLoading(true);
+    setReply(null);
 
     try {
-      const response = await fetch("http://localhost:8080/api/chat", {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -121,8 +124,7 @@ function ChatWindow() {
       console.log("Normal Chat Response:", res);
 
       if (!response.ok) {
-        console.error("Backend Error:", res);
-        return;
+        throw new Error(res.error || "Chat request failed");
       }
 
       setReply(res.reply);
@@ -140,57 +142,61 @@ function ChatWindow() {
       }
     } catch (error) {
       console.error("Error fetching reply:", error);
+      alert(
+        "Unable to get a response. Please try again. If the server was inactive, wait a moment and retry."
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  // ==========================================
   // VISION CHAT
+  // Image question is optional
+  // ==========================================
 
   const getVisionReply = async () => {
+    if (loading) {
+      return;
+    }
+
     if (!selectedImage) {
       alert("Please select an image first.");
       return;
     }
 
-    if (!prompt.trim()) {
-      alert("Please enter a question about the image.");
-      return;
-    }
+    // If the user hasn't typed a question,
+    // ask Gemini to describe the uploaded image.
+    const currentPrompt =
+      prompt.trim() || "Describe this image in detail.";
 
-    const currentPrompt = prompt;
+    const currentImage = selectedImage;
+    const currentPreview = imagePreview;
 
-    // User Vision message
-    // imagePreview is saved along with message
+    // Show uploaded image and prompt in chat
     setPrevChats((prev) => [
       ...prev,
       {
         role: "user",
-        content: currentPrompt,
-        image: imagePreview,
+        content: prompt.trim(),
+        image: currentPreview,
       },
     ]);
 
     setNewChats(false);
     setPrompt("");
     setLoading(true);
+    setReply(null);
 
     try {
       const formData = new FormData();
 
-      // Question
       formData.append("message", currentPrompt);
+      formData.append("image", currentImage);
+      formData.append("imagePreview", currentPreview || "");
+      formData.append("threadId", currThreadId || "");
 
-      // Original image
-      formData.append("image", selectedImage);
-
-      // Small thumbnail for chat/history
-      formData.append("imagePreview", imagePreview);
-
-      // Thread ID
-      formData.append("threadId", currThreadId);
-
-      const response = await fetch("http://localhost:8080/api/vision", {
+      const response = await fetch(`${API_BASE_URL}/vision`, {
         method: "POST",
         body: formData,
       });
@@ -200,14 +206,12 @@ function ChatWindow() {
       console.log("Vision Response:", res);
 
       if (!response.ok) {
-        console.error("Vision Backend Error:", res);
-        return;
+        throw new Error(res.error || "Vision request failed");
       }
 
       // Gemini reply
       setReply(res.reply);
 
-      // Assistant message
       setPrevChats((prev) => [
         ...prev,
         {
@@ -226,36 +230,46 @@ function ChatWindow() {
       setImagePreview(null);
       setShowMenu(false);
 
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
     } catch (error) {
       console.error("Vision Error:", error);
+      alert(
+        "Unable to analyze the image. Please try again. If the server was inactive, wait a moment and retry."
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // Profile //
+  // ==========================================
+  // PROFILE
+  // ==========================================
 
   const handleProfileClick = () => {
     setIsopen(!isOpen);
   };
 
-  // Attachment Button //
+  // ==========================================
+  // ATTACHMENT BUTTON
+  // ==========================================
 
   const handlePlusClick = () => {
     setShowMenu(!showMenu);
   };
 
-  // Upload Image//
+  // ==========================================
+  // UPLOAD IMAGE
+  // ==========================================
 
   const handleImageClick = () => {
-    fileInputRef.current.click();
+    fileInputRef.current?.click();
   };
 
-  // Image Selected //
+  // ==========================================
+  // IMAGE SELECTED
+  // ==========================================
 
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
@@ -267,25 +281,22 @@ function ChatWindow() {
     // Image check
     if (!file.type.startsWith("image/")) {
       alert("Please select an image file.");
+      e.target.value = "";
       return;
     }
 
     // 10 MB limit
     if (file.size > 10 * 1024 * 1024) {
       alert("Image size must be less than 10 MB.");
+      e.target.value = "";
       return;
     }
 
     try {
-      // Original image
-      setSelectedImage(file);
-
-      // Small preview
       const thumbnail = await createImageThumbnail(file);
 
+      setSelectedImage(file);
       setImagePreview(thumbnail);
-
-      // Close menu
       setShowMenu(false);
 
       console.log("Selected Image:", file);
@@ -293,10 +304,13 @@ function ChatWindow() {
       console.error("Image Preview Error:", error);
       setSelectedImage(null);
       setImagePreview(null);
+      alert("Unable to preview this image. Please select another image.");
     }
   };
 
-  // Remove Image //
+  // ==========================================
+  // REMOVE IMAGE
+  // ==========================================
 
   const removeSelectedImage = () => {
     setSelectedImage(null);
@@ -307,15 +321,25 @@ function ChatWindow() {
     }
   };
 
-  // Send//
+  // ==========================================
+  // SEND
+  // ==========================================
 
   const handleSend = () => {
+    if (loading) {
+      return;
+    }
+
     if (selectedImage) {
       getVisionReply();
     } else {
       getReply();
     }
   };
+
+  // ==========================================
+  // UI
+  // ==========================================
 
   return (
     <div className="chatWindow">
@@ -384,7 +408,6 @@ function ChatWindow() {
             <div className="plusMenu">
               <div className="plusMenuItem" onClick={handleImageClick}>
                 <i className="fa-regular fa-image"></i>
-
                 <span>Upload Image</span>
               </div>
             </div>
@@ -395,9 +418,7 @@ function ChatWindow() {
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            style={{
-              display: "none",
-            }}
+            style={{ display: "none" }}
             onChange={handleImageChange}
           />
 
@@ -420,26 +441,34 @@ function ChatWindow() {
           {/* Input */}
           <input
             placeholder={
-              selectedImage ? "Ask about this image..." : "Ask anything"
+              selectedImage ? "Ask about this image (optional)..." : "Ask anything"
             }
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
                 handleSend();
               }
             }}
           />
 
           {/* Send */}
-          <div id="submit" onClick={handleSend} title="Send">
+          <div
+            id="submit"
+            onClick={handleSend}
+            title="Send"
+            style={{
+              opacity: loading ? 0.5 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
             <i className="fa-solid fa-paper-plane"></i>
           </div>
         </div>
 
         <p className="info">
-          ChatGPT can make mistakes. Check important info. See cookie
-          Preferences.
+          VisionAI can make mistakes. Check important information.
         </p>
       </div>
     </div>
